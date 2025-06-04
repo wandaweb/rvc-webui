@@ -104,6 +104,9 @@ def create_dataset_meta(training_dir: str, f0: bool):
     gt_wavs_dir = os.path.join(training_dir, "0_gt_wavs")
     co256_dir = os.path.join(training_dir, "3_feature256")
 
+    os.makedirs(gt_wavs_dir, exist_ok=True)
+    os.makedirs(co256_dir, exist_ok=True)
+
     def list_data(dir: str):
         files = []
         for subdir in os.listdir(dir):
@@ -117,6 +120,8 @@ def create_dataset_meta(training_dir: str, f0: bool):
     if f0:
         f0_dir = os.path.join(training_dir, "2a_f0")
         f0nsf_dir = os.path.join(training_dir, "2b_f0nsf")
+        os.makedirs(f0_dir, exist_ok=True)
+        os.makedirs(f0nsf_dir, exist_ok=True)
         names = names & set(list_data(f0_dir)) & set(list_data(f0nsf_dir))
 
     meta = {
@@ -342,7 +347,7 @@ def train_model(
 
     # Mac(MPS)でやると、mp.spawnでなんかトラブルが出るので普通にtraining_runnerを呼び出す。
     if device is not None:
-        training_runner(
+        out = training_runner(
             0,  # rank
             1,  # world size
             config,
@@ -366,6 +371,7 @@ def train_model(
             save_only_last,
             device,
         )
+        print("Training finished with device")
     else:
         mp.spawn(
             training_runner,
@@ -393,7 +399,9 @@ def train_model(
                 save_only_last,
                 device,
             ),
+            join=True,
         )
+        print("Training finished with no device")
 
     end = time.perf_counter()
 
@@ -406,6 +414,7 @@ def train_model(
 
     torch.backends.cudnn.deterministic = deterministic
     torch.backends.cudnn.benchmark = benchmark
+    return "*** training model done ***"
 
 
 def training_runner(
@@ -996,3 +1005,5 @@ def training_runner(
             epoch,
             speaker_info
         )
+
+    return "Training is done."

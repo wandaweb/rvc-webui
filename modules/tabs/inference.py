@@ -1,6 +1,7 @@
 import glob
 import os
 import traceback
+import time
 
 import gradio as gr
 
@@ -64,6 +65,12 @@ def inference_options_ui(show_out_dir=True):
 
 
 class Inference(Tab):
+
+    def __init__(self, filepath: str) -> None:
+        self.filepath = filepath
+        self.generating_finished = False
+        self.output = None
+
     def title(self):
         return "Inference"
 
@@ -72,32 +79,33 @@ class Inference(Tab):
 
     def ui(self, outlet):
         def infer(
-            sid,
-            input_audio,
-            out_dir,
-            embedder_model,
-            embedding_output_layer,
-            f0_up_key,
-            f0_file,
-            f0_method,
-            auto_load_index,
-            faiss_index_file,
-            index_rate,
+                sid,
+                input_audio,
+                out_dir,
+                embedder_model,
+                embedding_output_layer,
+                f0_up_key,
+                f0_file,
+                f0_method,
+                auto_load_index,
+                faiss_index_file,
+                index_rate,
         ):
+            self.generating_finished = False
             model = models.vc_model
             try:
-                yield "Infering...", None
+                # yield "Infering...", None
                 if out_dir == "":
                     out_dir = models.AUDIO_OUT_DIR
 
                 if "*" in input_audio:
                     assert (
-                        out_dir is not None
+                            out_dir is not None
                     ), "Out folder is required for batch processing"
                     files = glob.glob(input_audio, recursive=True)
                 elif os.path.isdir(input_audio):
                     assert (
-                        out_dir is not None
+                            out_dir is not None
                     ), "Out folder is required for batch processing"
                     files = glob.glob(
                         os.path.join(input_audio, "**", "*.wav"), recursive=True
@@ -118,9 +126,19 @@ class Inference(Tab):
                         index_rate,
                         output_dir=out_dir,
                     )
+                self.generating_finished = True
+                self.output = (model.tgt_sr, audio) if len(files) == 1 else None
                 yield "Success", (model.tgt_sr, audio) if len(files) == 1 else None
             except:
                 yield "Error: " + traceback.format_exc(), None
+
+        def update():
+            while (self.generating_finished == False):
+                print(self.generating_finished)
+                time.sleep(2)
+                yield "Generating...", None
+
+            yield "Generating completed", self.output
 
         with gr.Group():
             with gr.Box():
@@ -165,4 +183,10 @@ class Inference(Tab):
             ],
             outputs=[status, output],
             queue=True,
+        ).then(
+            update,
+            inputs=[
+
+            ],
+            outputs=[status, output],
         )

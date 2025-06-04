@@ -2,6 +2,17 @@ import os
 
 from modules import cmd_opts, ui
 
+import torch
+import logging
+
+orig_torch_load = torch.load
+
+def torch_wrapper(*args, **kwargs):
+    kwargs['weights_only'] = False
+    return orig_torch_load(*args, **kwargs)
+
+torch.load = torch_wrapper
+
 # なんか知らんが湧いて出てくる ".DS_Store"　を無視する。
 # ここにこんなコードを置くべきかはわからないけど…
 _list_dir = os.listdir

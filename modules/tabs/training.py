@@ -1,9 +1,11 @@
 import math
 import os
 import shutil
+import time
 from multiprocessing import cpu_count
 
 import gradio as gr
+import warnings
 
 from lib.rvc.preprocessing import extract_f0, extract_feature, split
 from lib.rvc.train import create_dataset_meta, glob_dataset, train_index, train_model
@@ -17,8 +19,18 @@ SR_DICT = {
     "48k": 48000,
 }
 
+warnings.filterwarnings('ignore')
+
+training_model_finished = False
+
 
 class Training(Tab):
+
+    def __init__(self, filepath: str) -> None:
+        self.filepath = filepath
+        self.training_finished = False
+        self.first_step_finished = False
+
     def title(self):
         return "Training"
 
@@ -26,264 +38,6 @@ class Training(Tab):
         return 2
 
     def ui(self, outlet):
-        def train_index_only(
-            model_name,
-            target_sr,
-            f0,
-            dataset_glob,
-            recursive,
-            multiple_speakers,
-            speaker_id,
-            gpu_id,
-            num_cpu_process,
-            norm_audio_when_preprocess,
-            pitch_extraction_algo,
-            run_train_index,
-            reduce_index_size,
-            maximum_index_size,
-            embedder_name,
-            embedding_channels,
-            embedding_output_layer,
-            ignore_cache,
-        ):
-            maximum_index_size = int(maximum_index_size)
-            f0 = f0 == "Yes"
-            norm_audio_when_preprocess = norm_audio_when_preprocess == "Yes"
-            run_train_index = run_train_index == "Yes"
-            reduce_index_size = reduce_index_size == "Yes"
-            training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
-            gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
-            yield f"Training directory: {training_dir}"
-
-            if os.path.exists(training_dir) and ignore_cache:
-                shutil.rmtree(training_dir)
-
-            os.makedirs(training_dir, exist_ok=True)
-
-            datasets = glob_dataset(
-                dataset_glob,
-                speaker_id,
-                multiple_speakers=multiple_speakers,
-                recursive=recursive,
-            )
-
-            if len(datasets) == 0:
-                raise Exception("No audio files found")
-
-            yield "Preprocessing..."
-            split.preprocess_audio(
-                datasets,
-                SR_DICT[target_sr],
-                num_cpu_process,
-                training_dir,
-                norm_audio_when_preprocess,
-                os.path.join(
-                    MODELS_DIR,
-                    "training",
-                    "mute",
-                    "0_gt_wavs",
-                    f"mute{target_sr}.wav",
-                ),
-            )
-
-            if f0:
-                yield "Extracting f0..."
-                extract_f0.run(training_dir, num_cpu_process, pitch_extraction_algo)
-
-            yield "Extracting features..."
-
-            embedder_filepath, _, embedder_load_from = models.get_embedder(
-                embedder_name
-            )
-
-            if embedder_load_from == "local":
-                embedder_filepath = os.path.join(
-                    MODELS_DIR, "embeddings", embedder_filepath
-                )
-
-            extract_feature.run(
-                training_dir,
-                embedder_filepath,
-                embedder_load_from,
-                int(embedding_channels),
-                int(embedding_output_layer),
-                gpu_ids,
-            )
-
-            out_dir = os.path.join(MODELS_DIR, "checkpoints")
-
-            yield "Training index..."
-            if run_train_index:
-                if not reduce_index_size:
-                    maximum_index_size = None
-                train_index(
-                    training_dir,
-                    model_name,
-                    out_dir,
-                    int(embedding_channels),
-                    num_cpu_process,
-                    maximum_index_size,
-                )
-
-            yield "Training complete"
-
-        def train_all(
-            model_name,
-            version,
-            sampling_rate_str,
-            f0,
-            dataset_glob,
-            recursive,
-            multiple_speakers,
-            speaker_id,
-            gpu_id,
-            num_cpu_process,
-            norm_audio_when_preprocess,
-            pitch_extraction_algo,
-            batch_size,
-            augment,
-            augment_from_pretrain,
-            augment_path,
-            speaker_info_path,
-            cache_batch,
-            num_epochs,
-            save_every_epoch,
-            save_wav_with_checkpoint,
-            fp16,
-            save_only_last,
-            pre_trained_bottom_model_g,
-            pre_trained_bottom_model_d,
-            run_train_index,
-            reduce_index_size,
-            maximum_index_size,
-            embedder_name,
-            embedding_channels,
-            embedding_output_layer,
-            ignore_cache,
-        ):
-            batch_size = int(batch_size)
-            num_epochs = int(num_epochs)
-            maximum_index_size = int(maximum_index_size)
-            f0 = f0 == "Yes"
-            norm_audio_when_preprocess = norm_audio_when_preprocess == "Yes"
-            run_train_index = run_train_index == "Yes"
-            reduce_index_size = reduce_index_size == "Yes"
-            training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
-            gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
-
-            if os.path.exists(training_dir) and ignore_cache:
-                shutil.rmtree(training_dir)
-
-            os.makedirs(training_dir, exist_ok=True)
-
-            yield f"Training directory: {training_dir}"
-
-            datasets = glob_dataset(
-                dataset_glob,
-                speaker_id,
-                multiple_speakers=multiple_speakers,
-                recursive=recursive,
-                training_dir=training_dir,
-            )
-
-            if len(datasets) == 0:
-                raise Exception("No audio files found")
-
-            yield "Preprocessing..."
-            split.preprocess_audio(
-                datasets,
-                SR_DICT[sampling_rate_str],
-                num_cpu_process,
-                training_dir,
-                norm_audio_when_preprocess,
-                os.path.join(
-                    MODELS_DIR,
-                    "training",
-                    "mute",
-                    "0_gt_wavs",
-                    f"mute{sampling_rate_str}.wav",
-                ),
-            )
-
-            if f0:
-                yield "Extracting f0..."
-                extract_f0.run(training_dir, num_cpu_process, pitch_extraction_algo)
-
-            yield "Extracting features..."
-
-            embedder_filepath, _, embedder_load_from = models.get_embedder(
-                embedder_name
-            )
-
-            if embedder_load_from == "local":
-                embedder_filepath = os.path.join(
-                    MODELS_DIR, "embeddings", embedder_filepath
-                )
-
-            extract_feature.run(
-                training_dir,
-                embedder_filepath,
-                embedder_load_from,
-                int(embedding_channels),
-                int(embedding_output_layer),
-                gpu_ids,
-                None if len(gpu_ids) > 1 else device,
-            )
-
-            create_dataset_meta(training_dir, f0)
-
-            yield "Training model..."
-
-            print(f"train_all: emb_name: {embedder_name}")
-
-            config = utils.load_config(
-                version, training_dir, sampling_rate_str, embedding_channels, fp16
-            )
-            out_dir = os.path.join(MODELS_DIR, "checkpoints")
-
-            if not augment_from_pretrain:
-                augment_path = None
-                speaker_info_path = None
-
-            train_model(
-                gpu_ids,
-                config,
-                training_dir,
-                model_name,
-                out_dir,
-                sampling_rate_str,
-                f0,
-                batch_size,
-                augment,
-                augment_path,
-                speaker_info_path,
-                cache_batch,
-                num_epochs,
-                save_every_epoch,
-                save_wav_with_checkpoint,
-                pre_trained_bottom_model_g,
-                pre_trained_bottom_model_d,
-                embedder_name,
-                int(embedding_output_layer),
-                save_only_last,
-                None if len(gpu_ids) > 1 else device,
-            )
-
-            yield "Training index..."
-            if run_train_index:
-                if not reduce_index_size:
-                    maximum_index_size = None
-                train_index(
-                    training_dir,
-                    model_name,
-                    out_dir,
-                    int(embedding_channels),
-                    num_cpu_process,
-                    maximum_index_size,
-                )
-
-            yield "Training completed"
-
         with gr.Group():
             with gr.Box():
                 with gr.Column():
@@ -293,7 +47,8 @@ class Training(Tab):
                             ignore_cache = gr.Checkbox(label="Ignore cache")
                         with gr.Column():
                             dataset_glob = gr.Textbox(
-                                label="Dataset glob", placeholder="data/**/*.wav"
+                                label="Dataset glob", placeholder="data/**/*.wav",
+                                value="/kaggle/working/sample.wav"
                             )
                             recursive = gr.Checkbox(label="Recursive", value=True)
                             multiple_speakers = gr.Checkbox(
@@ -342,7 +97,8 @@ class Training(Tab):
                     with gr.Row(equal_height=False):
                         gpu_id = gr.Textbox(
                             label="GPU ID",
-                            value=", ".join([f"{x.index}" for x in utils.get_gpus()]),
+                            value="0"
+                            # value=", ".join([f"{x.index}" for x in utils.get_gpus()]),
                         )
                         num_cpu_process = gr.Slider(
                             minimum=0,
@@ -426,16 +182,16 @@ class Training(Tab):
                         )
 
                     with gr.Row(equal_height=False):
-                        status = gr.Textbox(value="", label="Status")
+                        status = gr.Textbox(value="", label="Status", elem_id="status")
                     with gr.Row(equal_height=False):
-                        train_index_button = gr.Button("Train Index", variant="primary")
+                        # train_index_button = gr.Button("Train Index", variant="primary")
                         train_all_button = gr.Button("Train", variant="primary")
 
-        train_index_button.click(
-            train_index_only,
-            inputs=[
+
+        def train_all(
                 model_name,
-                target_sr,
+                version,
+                sampling_rate_str,
                 f0,
                 dataset_glob,
                 recursive,
@@ -445,16 +201,289 @@ class Training(Tab):
                 num_cpu_process,
                 norm_audio_when_preprocess,
                 pitch_extraction_algo,
+                batch_size,
+                augment,
+                augment_from_pretrain,
+                augment_path,
+                speaker_info_path,
+                cache_batch,
+                num_epochs,
+                save_every_epoch,
+                save_wav_with_checkpoint,
+                fp16,
+                save_only_last,
+                pre_trained_bottom_model_g,
+                pre_trained_bottom_model_d,
                 run_train_index,
                 reduce_index_size,
                 maximum_index_size,
-                embedding_name,
+                embedder_name,
                 embedding_channels,
                 embedding_output_layer,
                 ignore_cache,
-            ],
-            outputs=[status],
-        )
+        ):
+            self.training_finished = False
+            self.first_step_finished = False
+            batch_size = int(batch_size)
+            num_epochs = int(num_epochs)
+            maximum_index_size = int(maximum_index_size)
+            f0 = f0 == "Yes"
+            norm_audio_when_preprocess = norm_audio_when_preprocess == "Yes"
+            run_train_index = run_train_index == "Yes"
+            reduce_index_size = reduce_index_size == "Yes"
+            training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
+            gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
+
+            if os.path.exists(training_dir) and ignore_cache:
+                shutil.rmtree(training_dir)
+
+            os.makedirs(training_dir, exist_ok=True)
+
+            try:
+
+                datasets = glob_dataset(
+                    dataset_glob,
+                    speaker_id,
+                    multiple_speakers=multiple_speakers,
+                    recursive=recursive,
+                    training_dir=training_dir,
+                )
+
+                # if len(datasets) == 0:
+                #    raise Exception("No audio files found")
+
+                split.preprocess_audio(
+                    datasets,
+                    SR_DICT[sampling_rate_str],
+                    num_cpu_process,
+                    training_dir,
+                    norm_audio_when_preprocess,
+                    os.path.join(
+                        MODELS_DIR,
+                        "training",
+                        "mute",
+                        "0_gt_wavs",
+                        f"mute{sampling_rate_str}.wav",
+                    ),
+                )
+
+                if f0:
+                    try:
+                        extract_f0.run(training_dir, num_cpu_process, pitch_extraction_algo)
+                    except Exception as e:
+                        print(str(e))
+
+                    self.first_step_finished = True
+            except Exception as e:
+                print(str(e))
+
+        def train2(
+                model_name,
+                version,
+                sampling_rate_str,
+                f0,
+                dataset_glob,
+                recursive,
+                multiple_speakers,
+                speaker_id,
+                gpu_id,
+                num_cpu_process,
+                norm_audio_when_preprocess,
+                pitch_extraction_algo,
+                batch_size,
+                augment,
+                augment_from_pretrain,
+                augment_path,
+                speaker_info_path,
+                cache_batch,
+                num_epochs,
+                save_every_epoch,
+                save_wav_with_checkpoint,
+                fp16,
+                save_only_last,
+                pre_trained_bottom_model_g,
+                pre_trained_bottom_model_d,
+                run_train_index,
+                reduce_index_size,
+                maximum_index_size,
+                embedder_name,
+                embedding_channels,
+                embedding_output_layer,
+                ignore_cache,
+        ):
+            batch_size = int(batch_size)
+            num_epochs = int(num_epochs)
+            maximum_index_size = int(maximum_index_size)
+            f0 = f0 == "Yes"
+            norm_audio_when_preprocess = norm_audio_when_preprocess == "Yes"
+            run_train_index = run_train_index == "Yes"
+            reduce_index_size = reduce_index_size == "Yes"
+            training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
+            gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
+
+            try:
+                embedder_filepath, _, embedder_load_from = models.get_embedder(
+                    embedder_name
+                )
+
+                if embedder_load_from == "local":
+                    embedder_filepath = os.path.join(
+                        MODELS_DIR, "embeddings", embedder_filepath
+                    )
+
+                extract_feature.run(
+                    training_dir,
+                    embedder_filepath,
+                    embedder_load_from,
+                    int(embedding_channels),
+                    int(embedding_output_layer),
+                    gpu_ids,
+                    None if len(gpu_ids) > 1 else device,
+                )
+
+                create_dataset_meta(training_dir, f0)
+
+                while (self.first_step_finished == False):
+                    print(self.first_step_finished)
+                    time.sleep(2)
+                    yield "Training..."
+
+                yield "Training completed"
+
+                print(f"train_all: emb_name: {embedder_name}")
+
+
+            except Exception as e:
+                print(str(e))
+
+        def train3(
+                model_name,
+                version,
+                sampling_rate_str,
+                f0,
+                dataset_glob,
+                recursive,
+                multiple_speakers,
+                speaker_id,
+                gpu_id,
+                num_cpu_process,
+                norm_audio_when_preprocess,
+                pitch_extraction_algo,
+                batch_size,
+                augment,
+                augment_from_pretrain,
+                augment_path,
+                speaker_info_path,
+                cache_batch,
+                num_epochs,
+                save_every_epoch,
+                save_wav_with_checkpoint,
+                fp16,
+                save_only_last,
+                pre_trained_bottom_model_g,
+                pre_trained_bottom_model_d,
+                run_train_index,
+                reduce_index_size,
+                maximum_index_size,
+                embedder_name,
+                embedding_channels,
+                embedding_output_layer,
+                ignore_cache,
+        ):
+            batch_size = int(batch_size)
+            num_epochs = int(num_epochs)
+            maximum_index_size = int(maximum_index_size)
+            f0 = f0 == "Yes"
+            norm_audio_when_preprocess = norm_audio_when_preprocess == "Yes"
+            run_train_index = run_train_index == "Yes"
+            reduce_index_size = reduce_index_size == "Yes"
+            training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
+            gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
+            try:
+                config = utils.load_config(
+                    version, training_dir, sampling_rate_str, embedding_channels, fp16
+                )
+                out_dir = os.path.join(MODELS_DIR, "checkpoints")
+
+                if not augment_from_pretrain:
+                    augment_path = None
+                    speaker_info_path = None
+                out = train_model(
+                    gpu_ids,
+                    config,
+                    training_dir,
+                    model_name,
+                    out_dir,
+                    sampling_rate_str,
+                    f0,
+                    batch_size,
+                    augment,
+                    augment_path,
+                    speaker_info_path,
+                    cache_batch,
+                    num_epochs,
+                    save_every_epoch,
+                    save_wav_with_checkpoint,
+                    pre_trained_bottom_model_g,
+                    pre_trained_bottom_model_d,
+                    embedder_name,
+                    int(embedding_output_layer),
+                    save_only_last,
+                    None if len(gpu_ids) > 1 else device,
+                )
+                self.training_finished = True
+                print(out)
+                yield out
+
+            except Exception as e:
+                print(str(e))
+
+        def train4(
+                model_name,
+                f0,
+                gpu_id,
+                num_cpu_process,
+                norm_audio_when_preprocess,
+                batch_size,
+                num_epochs,
+                run_train_index,
+                reduce_index_size,
+                maximum_index_size,
+                embedding_channels,
+        ):
+            batch_size = int(batch_size)
+            num_epochs = int(num_epochs)
+            maximum_index_size = int(maximum_index_size)
+            f0 = f0 == "Yes"
+            norm_audio_when_preprocess = norm_audio_when_preprocess == "Yes"
+            run_train_index = run_train_index == "Yes"
+            reduce_index_size = reduce_index_size == "Yes"
+            training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
+            gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
+            try:
+                out_dir = os.path.join(MODELS_DIR, "checkpoints")
+
+                if run_train_index:
+                    if not reduce_index_size:
+                        maximum_index_size = None
+                    train_index(
+                        training_dir,
+                        model_name,
+                        out_dir,
+                        int(embedding_channels),
+                        num_cpu_process,
+                        maximum_index_size,
+                    )
+
+                while (self.training_finished == False):
+                    print(self.training_finished)
+                    time.sleep(2)
+                    yield "Training..."
+
+                yield "Training completed"
+
+            except Exception as e:
+                print(str(e))
 
         train_all_button.click(
             train_all,
@@ -491,6 +520,96 @@ class Training(Tab):
                 embedding_channels,
                 embedding_output_layer,
                 ignore_cache,
+            ],
+            outputs=[status],
+        ).then(
+            train2,
+            inputs=[
+                model_name,
+                version,
+                target_sr,
+                f0,
+                dataset_glob,
+                recursive,
+                multiple_speakers,
+                speaker_id,
+                gpu_id,
+                num_cpu_process,
+                norm_audio_when_preprocess,
+                pitch_extraction_algo,
+                batch_size,
+                augment,
+                augment_from_pretrain,
+                augment_path,
+                speaker_info_path,
+                cache_batch,
+                num_epochs,
+                save_every_epoch,
+                save_wav_with_checkpoint,
+                fp16,
+                save_only_last,
+                pre_trained_generator,
+                pre_trained_discriminator,
+                run_train_index,
+                reduce_index_size,
+                maximum_index_size,
+                embedding_name,
+                embedding_channels,
+                embedding_output_layer,
+                ignore_cache,
+            ],
+            outputs=[status],
+        ).then(
+            train3,
+            inputs=[
+                model_name,
+                version,
+                target_sr,
+                f0,
+                dataset_glob,
+                recursive,
+                multiple_speakers,
+                speaker_id,
+                gpu_id,
+                num_cpu_process,
+                norm_audio_when_preprocess,
+                pitch_extraction_algo,
+                batch_size,
+                augment,
+                augment_from_pretrain,
+                augment_path,
+                speaker_info_path,
+                cache_batch,
+                num_epochs,
+                save_every_epoch,
+                save_wav_with_checkpoint,
+                fp16,
+                save_only_last,
+                pre_trained_generator,
+                pre_trained_discriminator,
+                run_train_index,
+                reduce_index_size,
+                maximum_index_size,
+                embedding_name,
+                embedding_channels,
+                embedding_output_layer,
+                ignore_cache,
+            ],
+            outputs=[status],
+        ).then(
+            train4,
+            inputs=[
+                model_name,
+                f0,
+                gpu_id,
+                num_cpu_process,
+                norm_audio_when_preprocess,
+                batch_size,
+                num_epochs,
+                run_train_index,
+                reduce_index_size,
+                maximum_index_size,
+                embedding_channels,
             ],
             outputs=[status],
         )
