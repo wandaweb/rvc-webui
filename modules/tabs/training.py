@@ -12,6 +12,7 @@ from lib.rvc.train import create_dataset_meta, glob_dataset, train_index, train_
 from modules import models, utils
 from modules.shared import MODELS_DIR, device, half_support
 from modules.ui import Tab
+import status
 
 SR_DICT = {
     "32k": 32000,
@@ -28,8 +29,8 @@ class Training(Tab):
 
     def __init__(self, filepath: str) -> None:
         self.filepath = filepath
-        self.training_finished = False
-        self.first_step_finished = False
+        status.training_finished = False
+        status.first_step_finished = False
 
     def title(self):
         return "Training"
@@ -48,7 +49,7 @@ class Training(Tab):
                         with gr.Column():
                             dataset_glob = gr.Textbox(
                                 label="Dataset glob", placeholder="data/**/*.wav",
-                                value="/kaggle/working/sample.wav"
+                                value="/home/wanda/repos/sample/sample.wav"
                             )
                             recursive = gr.Checkbox(label="Recursive", value=True)
                             multiple_speakers = gr.Checkbox(
@@ -222,8 +223,8 @@ class Training(Tab):
                 embedding_output_layer,
                 ignore_cache,
         ):
-            self.training_finished = False
-            self.first_step_finished = False
+            status.training_finished = False
+            status.first_step_finished = False
             batch_size = int(batch_size)
             num_epochs = int(num_epochs)
             maximum_index_size = int(maximum_index_size)
@@ -249,8 +250,8 @@ class Training(Tab):
                     training_dir=training_dir,
                 )
 
-                # if len(datasets) == 0:
-                #    raise Exception("No audio files found")
+                if len(datasets) == 0:
+                    raise Exception("No audio files found")
 
                 split.preprocess_audio(
                     datasets,
@@ -273,7 +274,8 @@ class Training(Tab):
                     except Exception as e:
                         print(str(e))
 
-                    self.first_step_finished = True
+                    status.first_step_finished = True
+                time.sleep(30)
             except Exception as e:
                 print(str(e))
 
@@ -343,8 +345,8 @@ class Training(Tab):
 
                 create_dataset_meta(training_dir, f0)
 
-                while (self.first_step_finished == False):
-                    print(self.first_step_finished)
+                while (status.first_step_finished == False):
+                    print(status.first_step_finished)
                     time.sleep(2)
                     yield "Training..."
 
@@ -431,7 +433,7 @@ class Training(Tab):
                     save_only_last,
                     None if len(gpu_ids) > 1 else device,
                 )
-                self.training_finished = True
+                status.training_finished = True
                 print(out)
                 yield out
 
@@ -475,8 +477,8 @@ class Training(Tab):
                         maximum_index_size,
                     )
 
-                while (self.training_finished == False):
-                    print(self.training_finished)
+                while (status.training_finished == False):
+                    print(status.training_finished)
                     time.sleep(2)
                     yield "Training..."
 
