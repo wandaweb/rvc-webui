@@ -12,7 +12,7 @@ from lib.rvc.train import create_dataset_meta, glob_dataset, train_index, train_
 from modules import models, utils
 from modules.shared import MODELS_DIR, device, half_support
 from modules.ui import Tab
-import status
+from status import Status as status
 
 SR_DICT = {
     "32k": 32000,
@@ -49,7 +49,8 @@ class Training(Tab):
                         with gr.Column():
                             dataset_glob = gr.Textbox(
                                 label="Dataset glob", placeholder="data/**/*.wav",
-                                value="/home/wanda/repos/sample/sample.wav"
+                                #value="/home/wanda/repos/sample/sample.wav"
+                                value = "/home/tina/windisk/ai-apps/rvc-kaggle/sample/eleven.wav"
                             )
                             recursive = gr.Checkbox(label="Recursive", value=True)
                             multiple_speakers = gr.Checkbox(
@@ -270,12 +271,18 @@ class Training(Tab):
 
                 if f0:
                     try:
+                        status.extract_f0_finished = False
                         extract_f0.run(training_dir, num_cpu_process, pitch_extraction_algo)
                     except Exception as e:
                         print(str(e))
 
                     status.first_step_finished = True
-                time.sleep(30)
+                    status.extract_f0_finished = True
+                while (status.extract_f0_finished == False):
+                    time.sleep(4)
+                    print(status.extract_f0_finished)
+                    print("waiting on extract f0 " + str(status.extract_f0_finished))
+                
             except Exception as e:
                 print(str(e))
 
@@ -323,6 +330,10 @@ class Training(Tab):
             training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
             gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
 
+            while (status.extract_f0_finished == False):
+                    time.sleep(4)
+                    print("waiting on extract f0 " + str(status.extract_f0_finished))
+
             try:
                 embedder_filepath, _, embedder_load_from = models.get_embedder(
                     embedder_name
@@ -333,6 +344,7 @@ class Training(Tab):
                         MODELS_DIR, "embeddings", embedder_filepath
                     )
 
+                status.extract_features_finished = False
                 extract_feature.run(
                     training_dir,
                     embedder_filepath,
@@ -342,8 +354,14 @@ class Training(Tab):
                     gpu_ids,
                     None if len(gpu_ids) > 1 else device,
                 )
+                
 
                 create_dataset_meta(training_dir, f0)
+
+                status.extract_features_finished = True
+                while(status.extract_features_finished == False):
+                    time.sleep(4)
+                    print("waiting on extract features " + str(status.extract_features_finished))
 
                 while (status.first_step_finished == False):
                     print(status.first_step_finished)
@@ -401,7 +419,16 @@ class Training(Tab):
             reduce_index_size = reduce_index_size == "Yes"
             training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
             gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
+
+            while (status.extract_f0_finished == False):
+                    time.sleep(4)
+                    print("waiting on extract f0 " + str(status.extract_f0_finished))
+            while(status.extract_features_finished == False):
+                    time.sleep(2)
+                    print("waiting on extract features" + str(status.extract_features_finished))
+
             try:
+                status.train_model_finished = False
                 config = utils.load_config(
                     version, training_dir, sampling_rate_str, embedding_channels, fp16
                 )
@@ -433,6 +460,11 @@ class Training(Tab):
                     save_only_last,
                     None if len(gpu_ids) > 1 else device,
                 )
+                status.train_model_finished = True
+                while (status.train_model_finished == False):
+                    time.sleep(2)
+                    print("waiting for model training")
+
                 status.training_finished = True
                 print(out)
                 yield out
@@ -463,6 +495,7 @@ class Training(Tab):
             training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
             gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
             try:
+                status.train_index_finished = False
                 out_dir = os.path.join(MODELS_DIR, "checkpoints")
 
                 if run_train_index:
@@ -476,7 +509,10 @@ class Training(Tab):
                         num_cpu_process,
                         maximum_index_size,
                     )
-
+                status.train_index_finished = True
+                while(status.train_index_finished == False):
+                    time.sleep(2)
+                    print("waiting on index training")
                 while (status.training_finished == False):
                     print(status.training_finished)
                     time.sleep(2)

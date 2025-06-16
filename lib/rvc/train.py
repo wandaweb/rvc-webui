@@ -33,6 +33,7 @@ from .models import (MultiPeriodDiscriminator, SynthesizerTrnMs256NSFSid,
                      SynthesizerTrnMs256NSFSidNono)
 from .preprocessing.extract_feature import (MODELS_DIR, get_embedder,
                                             load_embedder)
+from status import Status as status
 
 
 def is_audio_file(file: str):
@@ -414,6 +415,7 @@ def train_model(
 
     torch.backends.cudnn.deterministic = deterministic
     torch.backends.cudnn.benchmark = benchmark
+    status.train_model_finished = True
     return "*** training model done ***"
 
 

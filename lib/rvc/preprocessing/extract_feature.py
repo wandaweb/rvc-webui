@@ -10,6 +10,7 @@ import torch
 import torch.nn.functional as F
 from fairseq import checkpoint_utils
 from tqdm import tqdm
+from status import Status as status
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 MODELS_DIR = os.path.join(ROOT_DIR, "models")
@@ -215,3 +216,5 @@ def run(
                     out_dir,
                     process_id=i,
                 )
+                status.extract_features_finished = True
+    

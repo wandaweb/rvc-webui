@@ -10,6 +10,7 @@ import torch
 import torchcrepe
 from torch import Tensor
 from tqdm import tqdm
+from status import Status as status
 
 from lib.rvc.utils import load_audio
 
@@ -217,5 +218,10 @@ def run(training_dir: str, num_processes: int, f0_method: str):
     with ProcessPoolExecutor(mp_context=mp.get_context("spawn")) as executer:
         for i in range(num_processes):
             executer.submit(processor, paths[i::num_processes], f0_method, process_id=i)
-
+            print("executor working...")
+    print("extract f0 finished!")
+    
     processor(paths, f0_method)
+    status.extract_f0_finished = True
+    print(status.extract_f0_finished)
+    
