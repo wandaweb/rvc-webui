@@ -49,8 +49,7 @@ class Training(Tab):
                         with gr.Column():
                             dataset_glob = gr.Textbox(
                                 label="Dataset glob", placeholder="data/**/*.wav",
-                                #value="/home/wanda/repos/sample/sample.wav"
-                                value = "/home/tina/windisk/ai-apps/rvc-kaggle/sample/eleven.wav"
+                                value="/kaggle/working/sample.wav"
                             )
                             recursive = gr.Checkbox(label="Recursive", value=True)
                             multiple_speakers = gr.Checkbox(
