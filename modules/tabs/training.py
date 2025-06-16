@@ -12,7 +12,7 @@ from lib.rvc.train import create_dataset_meta, glob_dataset, train_index, train_
 from modules import models, utils
 from modules.shared import MODELS_DIR, device, half_support
 from modules.ui import Tab
-from status import Status as status
+from status import Status as status_tracker
 
 SR_DICT = {
     "32k": 32000,
@@ -29,8 +29,8 @@ class Training(Tab):
 
     def __init__(self, filepath: str) -> None:
         self.filepath = filepath
-        status.training_finished = False
-        status.first_step_finished = False
+        status_tracker.training_finished = False
+        status_tracker.first_step_finished = False
 
     def title(self):
         return "Training"
@@ -223,8 +223,8 @@ class Training(Tab):
                 embedding_output_layer,
                 ignore_cache,
         ):
-            status.training_finished = False
-            status.first_step_finished = False
+            status_tracker.training_finished = False
+            status_tracker.first_step_finished = False
             batch_size = int(batch_size)
             num_epochs = int(num_epochs)
             maximum_index_size = int(maximum_index_size)
@@ -270,17 +270,18 @@ class Training(Tab):
 
                 if f0:
                     try:
-                        status.extract_f0_finished = False
+                        status_tracker.extract_f0_finished = False
                         extract_f0.run(training_dir, num_cpu_process, pitch_extraction_algo)
                     except Exception as e:
                         print(str(e))
 
-                    status.first_step_finished = True
-                    status.extract_f0_finished = True
-                while (status.extract_f0_finished == False):
+                    status_tracker.first_step_finished = True
+                    status_tracker.extract_f0_finished = True
+                while (status_tracker.extract_f0_finished == False):
                     time.sleep(4)
-                    print(status.extract_f0_finished)
-                    print("waiting on extract f0 " + str(status.extract_f0_finished))
+                    print(status_tracker.extract_f0_finished)
+                    print("waiting on extract f0 " + str(status_tracker.extract_f0_finished))
+                    yield('extracting...')
                 
             except Exception as e:
                 print(str(e))
@@ -329,9 +330,10 @@ class Training(Tab):
             training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
             gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
 
-            while (status.extract_f0_finished == False):
+            while (status_tracker.extract_f0_finished == False):
                     time.sleep(4)
-                    print("waiting on extract f0 " + str(status.extract_f0_finished))
+                    print("waiting on extract f0 " + str(status_tracker.extract_f0_finished))
+                    yield('extracting...')
 
             try:
                 embedder_filepath, _, embedder_load_from = models.get_embedder(
@@ -343,7 +345,7 @@ class Training(Tab):
                         MODELS_DIR, "embeddings", embedder_filepath
                     )
 
-                status.extract_features_finished = False
+                status_tracker.extract_features_finished = False
                 extract_feature.run(
                     training_dir,
                     embedder_filepath,
@@ -357,13 +359,14 @@ class Training(Tab):
 
                 create_dataset_meta(training_dir, f0)
 
-                status.extract_features_finished = True
-                while(status.extract_features_finished == False):
+                status_tracker.extract_features_finished = True
+                while(status_tracker.extract_features_finished == False):
                     time.sleep(4)
-                    print("waiting on extract features " + str(status.extract_features_finished))
+                    print("waiting on extract features " + str(status_tracker.extract_features_finished))
+                    yield('extracting...')
 
-                while (status.first_step_finished == False):
-                    print(status.first_step_finished)
+                while (status_tracker.first_step_finished == False):
+                    print(status_tracker.first_step_finished)
                     time.sleep(2)
                     yield "Training..."
 
@@ -419,15 +422,17 @@ class Training(Tab):
             training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
             gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
 
-            while (status.extract_f0_finished == False):
+            while (status_tracker.extract_f0_finished == False):
                     time.sleep(4)
-                    print("waiting on extract f0 " + str(status.extract_f0_finished))
-            while(status.extract_features_finished == False):
+                    print("waiting on extract f0 " + str(status_tracker.extract_f0_finished))
+                    yield('extracting...')
+            while(status_tracker.extract_features_finished == False):
                     time.sleep(2)
-                    print("waiting on extract features" + str(status.extract_features_finished))
+                    print("waiting on extract features" + str(status_tracker.extract_features_finished))
+                    yield('extracting...')
 
             try:
-                status.train_model_finished = False
+                status_tracker.train_model_finished = False
                 config = utils.load_config(
                     version, training_dir, sampling_rate_str, embedding_channels, fp16
                 )
@@ -459,12 +464,13 @@ class Training(Tab):
                     save_only_last,
                     None if len(gpu_ids) > 1 else device,
                 )
-                status.train_model_finished = True
-                while (status.train_model_finished == False):
+                status_tracker.train_model_finished = True
+                while (status_tracker.train_model_finished == False):
                     time.sleep(2)
                     print("waiting for model training")
+                    yield('training...')
 
-                status.training_finished = True
+                status_tracker.training_finished = True
                 print(out)
                 yield out
 
@@ -494,7 +500,7 @@ class Training(Tab):
             training_dir = os.path.join(MODELS_DIR, "training", "models", model_name)
             gpu_ids = [int(x.strip()) for x in gpu_id.split(",")] if gpu_id else []
             try:
-                status.train_index_finished = False
+                status_tracker.train_index_finished = False
                 out_dir = os.path.join(MODELS_DIR, "checkpoints")
 
                 if run_train_index:
@@ -508,12 +514,13 @@ class Training(Tab):
                         num_cpu_process,
                         maximum_index_size,
                     )
-                status.train_index_finished = True
-                while(status.train_index_finished == False):
+                status_tracker.train_index_finished = True
+                while(status_tracker.train_index_finished == False):
                     time.sleep(2)
                     print("waiting on index training")
-                while (status.training_finished == False):
-                    print(status.training_finished)
+                    yield('training...')
+                while (status_tracker.training_finished == False):
+                    print(status_tracker.training_finished)
                     time.sleep(2)
                     yield "Training..."
 
